@@ -13,10 +13,9 @@
 name: Wheel builder
 
 on:
-  schedule:
-  # 3:27 UTC every day
-  - cron: "27 3 * * *"
   push:
+  branches:
+    - 1.5.x
   pull_request:
     types: [labeled, opened, synchronize, reopened]
     paths-ignore:
@@ -34,12 +33,6 @@ permissions:
 jobs:
   build_sdist:
     name: Build sdist
-    if: >-
-      (github.event_name == 'schedule') ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' &&
-      contains(github.event.pull_request.labels.*.name, 'Build')) ||
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && ( ! endsWith(github.ref, 'dev0')))
     runs-on: ubuntu-22.04
     env:
       IS_PUSH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
@@ -79,12 +72,6 @@ jobs:
   build_wheels:
     needs: build_sdist
     name: Build wheel for ${{ matrix.python[0] }}-${{ matrix.buildplat[1] }}
-    if: >-
-      (github.event_name == 'schedule') ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' &&
-      contains(github.event.pull_request.labels.*.name, 'Build')) ||
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && ( ! endsWith(github.ref, 'dev0')))
     runs-on: ${{ matrix.buildplat[0] }}
     strategy:
       fail-fast: false
@@ -146,18 +133,6 @@ jobs:
           CIBW_PRERELEASE_PYTHONS: True
           CIBW_BUILD: ${{ matrix.python[0] }}-${{ matrix.buildplat[1] }}
 
-      - name: Build nightly wheels (with NumPy pre-release)
-        if: ${{ (env.IS_SCHEDULE_DISPATCH == 'true' && env.IS_PUSH != 'true') }}
-        uses: pypa/cibuildwheel@v2.16.2
-        with:
-         package-dir: ./dist/${{ matrix.buildplat[1] == 'macosx_*' && env.sdist_name || needs.build_sdist.outputs.sdist_file }}
-        env:
-          # The nightly wheels should be build witht he NumPy 2.0 pre-releases
-          # which requires the additional URL.
-          CIBW_ENVIRONMENT: PIP_EXTRA_INDEX_URL=https://pypi.anaconda.org/scientific-python-nightly-wheels/simple
-          CIBW_PRERELEASE_PYTHONS: True
-          CIBW_BUILD: ${{ matrix.python[0] }}-${{ matrix.buildplat[1] }}
-
       - name: Set up Python
         uses: mamba-org/setup-micromamba@v1
         with:
@@ -199,7 +174,6 @@ jobs:
         shell: bash -el {0}
         env:
           PANDAS_STAGING_UPLOAD_TOKEN: ${{ secrets.PANDAS_STAGING_UPLOAD_TOKEN }}
-          PANDAS_NIGHTLY_UPLOAD_TOKEN: ${{ secrets.PANDAS_NIGHTLY_UPLOAD_TOKEN }}
         # trigger an upload to
         # https://anaconda.org/scientific-python-nightly-wheels/pandas
         # for cron jobs or "Run workflow" (restricted to main branch).
@@ -207,6 +181,6 @@ jobs:
         # https://anaconda.org/multibuild-wheels-staging/pandas
         # The tokens were originally generated at anaconda.org
         run: |
-          source ci/upload_wheels.sh
+          python -m pip install -U pip
           set_upload_vars
           upload_wheels
